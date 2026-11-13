@@ -28,7 +28,7 @@
         <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a file">
           <p><strong>Drop an Excel or CSV file here</strong>, or click to browse</p>
           <p class="muted small">.xlsx, .xls or .csv. The file stays on this computer.</p>
-          <input id="file" type="file" accept=".xlsx,.xls,.xlsm,.csv" hidden>
+          <input id="file" type="file" accept=".xlsx,.xls,.xlsm,.csv,.tsv,.txt" hidden>
         </div>
         <p class="muted small">No file to hand? <button class="link" id="btn-sample">Load a sample messy file</button></p>
         <p id="file-error" class="error" role="alert" hidden></p>
@@ -53,6 +53,10 @@
         <h2><span class="step">3</span>Results</h2>
         <div class="tiles" id="tiles"></div>
         <p id="fixed" class="muted"></p>
+        <div id="warnings-wrap" class="notice" hidden>
+          <strong>Things to know about this file</strong>
+          <ul id="warnings"></ul>
+        </div>
         <div class="actions">
           <button class="btn btn--primary" id="btn-xlsx">Download cleaned Excel file</button>
           <button class="btn" id="btn-csv">Download cleaned CSV</button>

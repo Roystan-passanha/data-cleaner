@@ -15,6 +15,7 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
 .error { color: var(--bad); font-size: 14px; }
+.notice ul { margin: 6px 0 0; padding-left: 18px; }
 .notice { border: 1px solid rgba(251, 191, 36, .35); background: rgba(251, 191, 36, .08); color: #fde68a; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
 
 .brand { display: flex; align-items: center; gap: 10px; font-family: 'Space Grotesk'; font-weight: 600; font-size: 17px; }

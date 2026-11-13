@@ -6,9 +6,15 @@ const PLACEHOLDERS = new Set(['n/a', 'na', 'null', 'none', 'nil', '-', '--', '#n
 const SYNONYMS = {
   unitedarabemirates: 'uae', saudiarabia: 'ksa', kingdomofsaudiarabia: 'ksa',
   unitedkingdom: 'uk', greatbritain: 'uk', unitedstates: 'usa', unitedstatesofamerica: 'usa', us: 'usa',
-  canceled: 'cancelled', inprogress: 'underprocess', processing: 'underprocess'
+  canceled: 'cancelled', inprogress: 'underprocess', processing: 'underprocess', m: 'male', f: 'female'
 };
 const EMAIL = /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/;
+const ID_HEADER = /(^|[\s_])(id|code|ref|no\.?|number|num|#)$|passport|iban|phone|mobile|postal|zip|barcode|sku/;
+const PERCENT_HEADER = /%|percent|\brate\b|\bctr\b|margin/;
+const TOTAL_EXACT = /^(grand\s*totals?|sub\s*-?\s*totals?|totals?)\s*:?$/i;
+const TOTAL_PREFIX = /^(grand\s*total|sub\s*-?\s*total|total)\s+\S/i;
+
+const isCurrency = t => /^[$€£₹¥]$/.test(t) || /^(aed|usd|eur|gbp|inr|sar|qar|omr|kwd|bhd|rs|dhs?)\.?$/i.test(t) || (/^[A-Z]{3}\.?$/.test(t) && !/^(MN|BN)/.test(t));
 
 export const isDateCell = v => v !== null && typeof v === 'object' && 'date' in v;
 const isBlank = v => v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
@@ -19,19 +25,20 @@ const validYMD = (y, m, d) => {
   return d <= new Date(Date.UTC(y, m, 0)).getUTCDate();
 };
 const fullYear = y => (y < 100 ? (y < 50 ? 2000 + y : 1900 + y) : y);
+const stripTime = s => s.trim().replace(/[T ]\d{1,2}:\d{2}(:\d{2})?(\.\d+)?\s*(am|pm)?\s*(z|[+-]\d{2}:?\d{2})?$/i, '').trim();
+const NUMERIC_DATE = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})$/;
 
 /** Parse a date string. Returns 'YYYY-MM-DD', or null if it is not a real date. */
 export function parseDate(value, dayFirst = true) {
   if (isDateCell(value)) return value.date;
   if (typeof value !== 'string') return null;
-  const s = value.trim().replace(/[T ]\d{1,2}:\d{2}(:\d{2})?(\.\d+)?\s*(am|pm)?z?$/i, '').trim();
+  const s = stripTime(value);
   let m;
   if ((m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/))) {
     return validYMD(+m[1], +m[2], +m[3]) ? iso(+m[1], +m[2], +m[3]) : null;
   }
-  if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})$/))) {
-    let a = +m[1], b = +m[2];
-    const y = fullYear(+m[3]);
+  if ((m = s.match(NUMERIC_DATE))) {
+    const a = +m[1], b = +m[2], y = fullYear(+m[3]);
     let d = dayFirst ? a : b, mo = dayFirst ? b : a;
     if (mo > 12 && d <= 12) [d, mo] = [mo, d]; // only one reading is possible
     return validYMD(y, mo, d) ? iso(y, mo, d) : null;
@@ -48,41 +55,113 @@ export function parseDate(value, dayFirst = true) {
   return null;
 }
 
+/**
+ * Work out whether a column writes dates day first (31/12) or month first (12/31).
+ * @returns { dayFirst, evidence: 'day' | 'month' | 'both' | 'none' }
+ */
+export function detectDateOrder(values, fallback = true) {
+  let day = 0, month = 0;
+  for (const v of values) {
+    if (typeof v !== 'string') continue;
+    const m = stripTime(v).match(NUMERIC_DATE);
+    if (!m) continue;
+    if (+m[1] > 12 && +m[2] <= 12) day++;
+    else if (+m[2] > 12 && +m[1] <= 12) month++;
+  }
+  if (day && month) return { dayFirst: day >= month, evidence: 'both' };
+  if (day) return { dayFirst: true, evidence: 'day' };
+  if (month) return { dayFirst: false, evidence: 'month' };
+  return { dayFirst: fallback, evidence: 'none' };
+}
+
 const looksLikeDate = v => isDateCell(v) || (typeof v === 'string' && /^\s*(\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}|\d{1,2}[-\s][a-z]{3,9}\.?[-\s,]+\d{2,4}|[a-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})/i.test(v));
 
-/** Parse a number written as text ("1,234.50", "AED 1,200", "45%"). Returns a number or null. */
-export function parseNumber(value) {
-  if (typeof value === 'number') return value;
+/**
+ * Parse a number written as text: "1,234.50", "AED 1,200", "(500)", "1,200.00-", "1,200 CR", "45%", "12.4K".
+ * With decimalComma, "1.234,56" is read the European way. Returns a number or null.
+ */
+export function parseNumber(value, decimalComma = false) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value !== 'string') return null;
-  let s = value.trim().replace(/^(aed|usd|inr|sar|eur|gbp|rs\.?|dhs?\.?|[$€£₹])\s*/i, '').replace(/\s*(aed|usd|inr|sar|eur|gbp)$/i, '');
-  const pct = /%$/.test(s);
-  s = s.replace(/%$/, '').replace(/,/g, '').trim();
+  let s = value.trim().replace(/[−–]/g, '-');
   let neg = false;
-  if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
-  if (!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
-  const n = Number(s) * (neg ? -1 : 1);
+  if (/^\(.*\)$/.test(s)) { neg = !neg; s = s.slice(1, -1).trim(); }
+  const side = s.match(/\s*\b(cr|dr)\.?$/i);
+  if (side) { if (side[1].toLowerCase() === 'cr') neg = !neg; s = s.slice(0, side.index).trim(); }
+  if (/\d\s*-$/.test(s)) { neg = !neg; s = s.replace(/\s*-$/, ''); }
+  const lead = s.match(/^([-+]?)\s*([A-Za-z]{2,4}\.?|[$€£₹¥])?\s*([-+]?)\s*(.*)$/);
+  if (lead) {
+    if (lead[2] && !isCurrency(lead[2])) return null;
+    if (lead[1] === '-' || lead[3] === '-') neg = !neg;
+    s = lead[4];
+  }
+  const tail = s.match(/\s*([A-Za-z]{2,4}|[$€£₹¥])$/);
+  if (tail && isCurrency(tail[1])) s = s.slice(0, tail.index);
+  const pct = /%$/.test(s);
+  s = s.replace(/\s*%$/, '');
+  let mult = 1;
+  const big = s.match(/^(.*\d)\s*(k|m|mn|b|bn)$/i);
+  if (big) { mult = { k: 1e3, m: 1e6, mn: 1e6, b: 1e9, bn: 1e9 }[big[2].toLowerCase()]; s = big[1]; }
+  s = decimalComma ? s.replace(/[.\s]/g, '').replace(',', '.') : s.replace(/[,\s]/g, '');
+  if (!/^(\d+\.?\d*|\.\d+)$/.test(s)) return null;
+  if (/^0\d/.test(s) && !s.includes('.')) return null; // 000123 is a code, not a quantity
+  const n = Number(s) * mult * (neg ? -1 : 1);
   return pct ? n / 100 : n;
 }
 
+/** True when a column's numbers are written like 1.234,56 (decimal comma). */
+export function detectDecimalComma(values) {
+  let euro = 0, us = 0;
+  for (const v of values) {
+    if (typeof v !== 'string') continue;
+    const s = v.replace(/[^\d.,]/g, '');
+    if (/^\d{1,3}(\.\d{3})+,\d+$/.test(s) || /^\d+,\d{1,2}$/.test(s) || /^\d{1,3}(\.\d{3}){2,}$/.test(s)) euro++;
+    else if (/\.\d{1,2}$/.test(s) || /^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) us++;
+  }
+  return euro > 0 && euro > us;
+}
+
 const cleanText = s => s.replace(/[   ]/g, ' ').replace(/[​‌‍﻿]/g, '').replace(/\s+/g, ' ').trim();
-const catKey = s => { const k = String(s).toLowerCase().replace(/[^a-z0-9]/g, ''); return SYNONYMS[k] || k; };
+/** Key used to decide two spellings are the same value. Keeps letters of every script and symbols such as + and #. */
+export const catKey = s => {
+  const t = String(s).normalize('NFKC').toLowerCase().trim();
+  const k = t.replace(/[\s._'’]+/g, '').replace(/(?<=[\p{L}\p{N}])-(?=[\p{L}\p{N}])/gu, '');
+  return SYNONYMS[k] || k || t;
+};
 const titleCase = s => s.toLowerCase().replace(/(^|[\s\-'])([a-z])/g, (_, p, c) => p + c.toUpperCase());
+
+/**
+ * Find the row that holds the column names, skipping title rows above it.
+ * @returns { row, hasHeader } where hasHeader is false when the first full row already looks like data.
+ */
+export function detectHeaderRow(matrix) {
+  const filled = r => r.filter(v => !isBlank(v)).length;
+  const top = matrix.slice(0, 30);
+  const width = Math.max(0, ...top.map(filled));
+  if (!width) return { row: 0, hasHeader: true };
+  const need = Math.max(Math.min(2, width), Math.ceil(width * 0.6));
+  const row = Math.max(0, top.findIndex(r => filled(r) >= need));
+  const cells = matrix[row].filter(v => !isBlank(v));
+  const wordy = cells.filter(v => (typeof v === 'string' && parseNumber(v) === null && !parseDate(v)) || (Number.isInteger(v) && v >= 1900 && v <= 2100)).length;
+  return { row, hasHeader: wordy / cells.length >= 0.7 || matrix.length - row < 2 };
+}
 
 /** Guess what each column holds. Returns [{ name, type, filled, distinct }]. */
 export function profileColumns(headers, rows) {
   return headers.map((name, c) => {
     const vals = rows.map(r => r[c]).filter(v => !isBlank(v) && !(typeof v === 'string' && PLACEHOLDERS.has(v.trim().toLowerCase())));
     const n = vals.length || 1;
-    const h = String(name || '').toLowerCase();
+    const h = String(name || '').toLowerCase().trim();
     const share = fn => vals.filter(fn).length / n;
     const distinct = new Set(vals.map(v => (isDateCell(v) ? v.date : catKey(v)))).size;
     const avgLen = vals.reduce((a, v) => a + String(isDateCell(v) ? v.date : v).length, 0) / n;
     let type = 'text';
     const dateHint = /date|dob|birth|expiry|expire|issue|joined|joining|start|end/.test(h);
+    const at = share(v => typeof v === 'string' && v.includes('@'));
     if (vals.length === 0) type = 'text';
     else if (share(looksLikeDate) >= (dateHint ? 0.4 : 0.7)) type = 'date';
-    else if (/e-?mail/.test(h) || share(v => typeof v === 'string' && v.includes('@')) >= 0.6) type = 'email';
-    else if (/(^|\b|_)(id|code|ref|number|no)(\b|_|$)|passport|iban|phone|mobile/.test(h) && distinct / n > 0.5) type = 'id';
+    else if (at >= 0.6 || (/e-?mail/.test(h) && at >= 0.3)) type = 'email';
+    else if (ID_HEADER.test(h) && avgLen <= 40) type = 'id';
     else if (share(v => parseNumber(v) !== null) >= 0.8) type = 'number';
     else if (/name/.test(h) && distinct / n > 0.5) type = 'name';
     else if (distinct <= Math.max(12, rows.length * 0.05) && avgLen <= 30 && rows.length >= 5) type = 'category';
@@ -104,7 +183,7 @@ export function findHrColumns(headers) {
 }
 
 export const DEFAULT_OPTIONS = {
-  trim: true, placeholders: true, dropEmpty: true, dedupe: true, dates: true, dayFirst: true,
+  trim: true, placeholders: true, dropEmpty: true, dropTotals: true, dedupe: true, dates: true, dayFirst: true,
   numbers: true, emails: true, categories: true, names: true, missing: true, ids: true, hr: true,
   passportMinDays: 180, expiryWarnDays: 90, today: null, firstDataRow: 2
 };
@@ -112,18 +191,22 @@ export const DEFAULT_OPTIONS = {
 /**
  * Clean a table.
  * @param headers string[]  @param rows cell[][]  @param types optional per-column type overrides
- * @returns { headers, rows, columns, issues, summary, byProblem }
+ * @returns { headers, rows, columns, issues, summary, byProblem, warnings }
+ * `warnings` are plain sentences about things the reader should know (rows removed, cells that could not be read).
  */
 export function clean(headers, rows, opts = {}, types = null) {
   const o = { ...DEFAULT_OPTIONS, ...opts };
   const issues = [];
+  const warnings = [];
   const counts = { trimmed: 0, placeholders: 0, datesFixed: 0, numbersFixed: 0, categoriesFixed: 0, namesFixed: 0, emailsFixed: 0 };
 
   // headers: trim, fill blanks, make unique
-  const seen = {};
+  const seen = new Set();
   let H = headers.map((h, i) => {
-    let name = isBlank(h) ? `Column ${i + 1}` : cleanText(String(h));
-    if (seen[name]) name = `${name} (${++seen[name]})`; else seen[name] = 1;
+    const base = isBlank(h) ? `Column ${i + 1}` : cleanText(String(h));
+    let name = base;
+    for (let k = 2; seen.has(name); k++) name = `${base} (${k})`;
+    seen.add(name);
     return name;
   });
   const width = H.length;
@@ -132,6 +215,7 @@ export function clean(headers, rows, opts = {}, types = null) {
   // text tidy and placeholders
   for (const row of R) {
     row.cells = row.cells.map(v => {
+      if (typeof v === 'number' && !Number.isFinite(v)) return null;
       if (typeof v !== 'string') return v;
       let t = v;
       if (o.trim) { t = cleanText(v); if (t !== v) counts.trimmed++; }
@@ -154,6 +238,24 @@ export function clean(headers, rows, opts = {}, types = null) {
     }
   }
 
+  // total, subtotal and footer rows are summaries of the data, not data
+  let totalRows = 0;
+  if (o.dropTotals && R.length > 2) {
+    const labelCount = new Map();
+    for (const r of R) for (const v of r.cells.slice(0, 3)) if (typeof v === 'string') labelCount.set(v, (labelCount.get(v) || 0) + 1);
+    // "Total" on its own counts in any column; "Total Opex" only as a one-off label in the first three
+    const isTotal = r => r.cells.some(v => typeof v === 'string' && TOTAL_EXACT.test(v)) ||
+      r.cells.slice(0, 3).some(v => typeof v === 'string' && TOTAL_PREFIX.test(v) && labelCount.get(v) === 1);
+    const kept = R.filter(r => !isTotal(r));
+    // footer notes: trailing rows with a single filled cell in a wider table
+    if (H.length >= 3) while (kept.length > 2 && kept[kept.length - 1].cells.filter(v => !isBlank(v)).length <= 1) kept.pop();
+    totalRows = R.length - kept.length;
+    if (totalRows && kept.length >= 2) {
+      R = kept;
+      warnings.push(`${totalRows} total or footer ${totalRows === 1 ? 'row was' : 'rows were'} left out so ${totalRows === 1 ? 'it is' : 'they are'} not counted twice.`);
+    } else totalRows = 0;
+  }
+
   const columns = profileColumns(H, R.map(r => r.cells));
   if (types) columns.forEach((col, c) => { if (types[c]) col.type = types[c]; });
   const idCol = columns.findIndex(c => c.type === 'id');
@@ -164,24 +266,43 @@ export function clean(headers, rows, opts = {}, types = null) {
     row: R[i].src, id: idCol >= 0 ? show(R[i].cells[idCol]) : '', name: nameCol >= 0 ? show(R[i].cells[nameCol]) : '',
     column: H[c], problem, value: show(original[i][c]), severity
   });
+  const example = list => `for example "${String(list[0]).slice(0, 30)}"`;
 
   columns.forEach((col, c) => {
     if (col.type === 'date') {
+      const order = detectDateOrder(R.map(r => r.cells[c]), o.dayFirst);
+      const bad = [];
+      let ambiguous = 0;
       R.forEach((r, i) => {
         const v = r.cells[c];
         if (isBlank(v)) return;
-        const d = parseDate(typeof v === 'number' ? String(v) : v, o.dayFirst);
-        if (d) { if (o.dates) { if (!isDateCell(v)) counts.datesFixed++; r.cells[c] = { date: d }; } }
-        else flag(i, c, 'Not a valid date', 'High');
+        const d = parseDate(typeof v === 'number' ? String(v) : v, order.dayFirst);
+        if (d) {
+          if (typeof v === 'string' && NUMERIC_DATE.test(stripTime(v))) ambiguous++;
+          if (o.dates) { if (!isDateCell(v)) counts.datesFixed++; r.cells[c] = { date: d }; }
+        } else { flag(i, c, 'Not a valid date', 'High'); bad.push(v); }
       });
+      if (bad.length) warnings.push(`${bad.length} ${bad.length === 1 ? 'value' : 'values'} in "${H[c]}" could not be read as a date (${example(bad)}).`);
+      if (order.evidence === 'month') warnings.push(`Dates in "${H[c]}" were read as month/day/year, because some only make sense that way.`);
+      if (order.evidence === 'both') warnings.push(`"${H[c]}" mixes day/month and month/day dates. Unclear ones were read as ${order.dayFirst ? 'day/month' : 'month/day'}, so some may be in the wrong month.`);
+      col.dayFirst = order.dayFirst;
     } else if (col.type === 'number') {
+      const strings = R.map(r => r.cells[c]).filter(v => typeof v === 'string');
+      const comma = detectDecimalComma(strings);
+      const bad = [];
       R.forEach((r, i) => {
         const v = r.cells[c];
         if (isBlank(v) || typeof v === 'number') return;
-        const n = parseNumber(v);
-        if (n === null) flag(i, c, 'Not a number', 'Medium');
+        const n = parseNumber(v, comma);
+        if (n === null) { flag(i, c, 'Not a number', 'Medium'); bad.push(v); }
         else if (o.numbers) { r.cells[c] = n; counts.numbersFixed++; }
       });
+      if (bad.length) warnings.push(`${bad.length} ${bad.length === 1 ? 'cell' : 'cells'} in "${H[c]}" could not be read as a number (${example(bad)}) and ${bad.length === 1 ? 'is' : 'are'} left out of totals.`);
+      if (comma) warnings.push(`Numbers in "${H[c]}" were read with a decimal comma (1.234,56).`);
+      const nums = R.map(r => r.cells[c]).filter(v => typeof v === 'number');
+      const pctText = strings.filter(v => /%\s*\)?$/.test(v)).length;
+      col.percent = (strings.length > 0 && pctText / strings.length >= 0.3 && pctText / Math.max(1, col.filled) >= 0.1) ||
+        (PERCENT_HEADER.test(H[c].toLowerCase()) && nums.length > 0 && nums.every(v => Math.abs(v) <= 1.5));
     } else if (col.type === 'email') {
       R.forEach((r, i) => {
         const v = r.cells[c];
@@ -264,21 +385,26 @@ export function clean(headers, rows, opts = {}, types = null) {
     });
   }
 
-  // duplicates
-  let duplicateRows = 0;
+  // Duplicates. Identical rows are only certain to be mistakes when the table has a column that
+  // should be unique (an ID). Without one, identical rows can be real (two equal order lines).
+  let duplicateRows = 0, duplicatesKept = 0;
   if (o.dedupe) {
     const keys = new Set();
-    const dropped = new Set();
-    R.forEach((r, i) => {
-      const k = JSON.stringify(r.cells.slice(0, columns.length));
-      if (keys.has(k)) { dropped.add(i); flag(i, idCol >= 0 ? idCol : 0, 'Exact duplicate row (removed)', 'Low'); } else keys.add(k);
-    });
-    duplicateRows = dropped.size;
-    R = R.filter((_, i) => !dropped.has(i));
+    const dupes = new Set();
+    R.forEach((r, i) => { const k = JSON.stringify(r.cells.slice(0, columns.length)); if (keys.has(k)) dupes.add(i); else keys.add(k); });
+    const uniqueId = columns.some(col => col.type === 'id' && col.filled > 0 && col.distinct / col.filled >= 0.9);
+    if (dupes.size && uniqueId) {
+      for (const i of dupes) flag(i, idCol >= 0 ? idCol : 0, 'Exact duplicate row (removed)', 'Low');
+      duplicateRows = dupes.size;
+      R = R.filter((_, i) => !dupes.has(i));
+    } else if (dupes.size) {
+      duplicatesKept = dupes.size;
+      warnings.push(`${dupes.size.toLocaleString('en-US')} ${dupes.size === 1 ? 'row is' : 'rows are'} identical to another row. They were kept, because the file has no ID column to show they are mistakes.`);
+    }
   }
   if (o.ids) {
     columns.forEach((col, c) => {
-      if (col.type !== 'id') return;
+      if (col.type !== 'id' || col.distinct / Math.max(1, col.filled) < 0.9) return;
       const tally = new Map();
       R.forEach(r => { const v = r.cells[c]; if (!isBlank(v)) tally.set(String(v), (tally.get(String(v)) || 0) + 1); });
       R.forEach(r => {
@@ -302,9 +428,9 @@ export function clean(headers, rows, opts = {}, types = null) {
 
   const needReview = outRows.filter(r => r[r.length - 1] !== 'OK').length;
   const summary = {
-    rowsIn: rows.length, rowsOut: outRows.length, columns: columns.length, emptyRows, emptyCols, duplicateRows,
+    rowsIn: rows.length, rowsOut: outRows.length, columns: columns.length, emptyRows, emptyCols, duplicateRows, duplicatesKept, totalRows,
     rowsOk: outRows.length - needReview, rowsNeedReview: needReview, issues: issues.length,
     highIssues: issues.filter(i => i.severity === 'High').length, hrChecks: hrActive, ...counts
   };
-  return { headers: H, rows: outRows, columns, issues, byProblem, summary };
+  return { headers: H, rows: outRows, columns, issues, byProblem, summary, warnings };
 }

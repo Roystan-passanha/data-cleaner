@@ -1,4 +1,4 @@
-import { clean, profileColumns, isDateCell, DEFAULT_OPTIONS } from './cleaner.js';
+import { clean, profileColumns, isDateCell, detectHeaderRow, DEFAULT_OPTIONS } from './cleaner.js';
 import { makeSample } from './sample.js';
 
 const $ = id => document.getElementById(id);
@@ -19,24 +19,32 @@ const serialToIso = n => {
 const isoToSerial = s => Math.round(Date.parse(s + 'T00:00:00Z') / 86400000) + 25569;
 
 function sheetToMatrix(ws, csv) {
-  if (!ws['!ref']) return [];
-  const range = XLSX.utils.decode_range(ws['!ref']);
-  const out = [];
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    const row = [];
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r, c })];
-      let v = null;
-      if (cell && cell.t !== 'z' && cell.t !== 'e') {
-        if (cell.t === 'n' && cell.z && XLSX.SSF.is_date(cell.z)) { const d = serialToIso(cell.v); v = d ? { date: d } : cell.v; }
-        else if (cell.t === 'd') v = { date: cell.v.toISOString().slice(0, 10) };
-        else v = cell.v;
-        // CSV cells are read as text so dates are not guessed in US order; turn plain numbers back into numbers
-        if (csv && typeof v === 'string' && /^-?(0|[1-9]\d*)(\.\d+)?$/.test(v.trim()) && v.trim().length < 16) v = Number(v);
-      }
-      row.push(v);
-    }
-    out.push(row);
+  // Use the cells that exist. A sheet's declared range can run to row 1,048,576 because of one stray cell.
+  let maxR = -1, maxC = -1;
+  const cells = [];
+  for (const addr in ws) {
+    if (addr[0] === '!') continue;
+    const cell = ws[addr];
+    if (!cell || cell.t === 'z' || cell.t === 'e' || cell.v === undefined || cell.v === '') continue;
+    const { r, c } = XLSX.utils.decode_cell(addr);
+    cells.push([r, c, cell]);
+    if (r > maxR) maxR = r;
+    if (c > maxC) maxC = c;
+  }
+  if (maxR < 0) return [];
+  if (maxR > 400000 && cells.length < maxR / 3) maxR = cells.map(x => x[0]).sort((x, y) => x - y)[Math.floor(cells.length * 0.999)]; // ignore a stray cell far below the data
+  const out = Array.from({ length: maxR + 1 }, () => new Array(maxC + 1).fill(null));
+  for (const [r, c, cell] of cells) {
+    if (r > maxR) continue;
+    let v;
+    if (cell.t === 'n' && cell.z && XLSX.SSF.is_date(cell.z)) {
+      if (cell.v < 1) v = XLSX.SSF.format('hh:mm', cell.v); // a time of day with no date
+      else { const d = serialToIso(cell.v); v = d ? { date: d } : cell.v; }
+    } else if (cell.t === 'd') v = { date: cell.v.toISOString().slice(0, 10) };
+    else v = cell.v;
+    // CSV cells are read as text so dates are not guessed in US order; turn plain numbers back into numbers
+    if (csv && typeof v === 'string' && /^-?(0|[1-9]\d*)(\.\d+)?$/.test(v.trim()) && v.trim().length < 16) v = Number(v);
+    out[r][c] = v;
   }
   return out;
 }
@@ -45,7 +53,7 @@ async function openFile(file) {
   show($('file-error'), false);
   try {
     if (file.size > 30 * 1024 * 1024) throw new Error('That file is over 30 MB, which is too large to clean in a browser.');
-    const csv = /\.csv$/i.test(file.name);
+    const csv = /\.(csv|tsv|txt)$/i.test(file.name);
     state.csv = csv;
     if (!csv) {
       const sig = new Uint8Array(await file.slice(0, 4).arrayBuffer());
@@ -65,6 +73,9 @@ async function openFile(file) {
 function fillSheets() {
   const sel = $('sheet');
   sel.replaceChildren(...state.workbook.SheetNames.map(n => el('option', { value: n, textContent: n })));
+  // start on the sheet with the most data, which is rarely a cover or notes sheet
+  const size = n => Object.keys(state.workbook.Sheets[n]).length;
+  sel.value = state.workbook.SheetNames.reduce((a, b) => (size(b) > size(a) ? b : a));
   $('file-name').textContent = state.fileName;
   show($('file-info'));
   $('header-row').value = '';
@@ -76,7 +87,7 @@ function loadSheet() {
   const m = state.matrices[name] || (state.matrices[name] = sheetToMatrix(state.workbook.Sheets[name], state.csv));
   const filled = r => r.filter(v => v !== null && v !== '').length;
   let hr = Number($('header-row').value);
-  if (!hr) { hr = m.findIndex(r => filled(r) >= 2) + 1 || 1; $('header-row').value = hr; }
+  if (!hr) { hr = detectHeaderRow(m).row + 1; $('header-row').value = hr; }
   const header = m[hr - 1] || [];
   state.headers = header.map(v => (v === null ? '' : isDateCell(v) ? v.date : String(v)));
   state.rows = m.slice(hr);
@@ -107,7 +118,8 @@ const OPTIONS = [
   ['trim', 'Trim extra spaces and hidden characters'],
   ['placeholders', 'Treat N/A, null, - and similar as empty'],
   ['dropEmpty', 'Remove empty rows and columns'],
-  ['dedupe', 'Remove exact duplicate rows'],
+  ['dropTotals', 'Leave out total, subtotal and footer rows'],
+  ['dedupe', 'Remove exact duplicate rows (only when the file has an ID column)'],
   ['dates', 'Convert dates to one format'],
   ['dayFirst', 'Read 03/04/2026 as 3 April (day first)'],
   ['numbers', 'Turn numbers stored as text into numbers'],
@@ -154,9 +166,11 @@ function renderResults() {
   const tile = (value, label, tone = '') => el('div', { className: 'tile ' + tone }, el('span', { className: 'tile__value', textContent: value.toLocaleString() }), el('span', { className: 'tile__label', textContent: label }));
   $('tiles').replaceChildren(tile(s.rowsOut, 'rows after cleaning'), tile(s.rowsOk, 'rows OK', 'good'), tile(s.rowsNeedReview, 'rows need review', s.rowsNeedReview ? 'warn' : ''), tile(s.highIssues, 'high severity issues', s.highIssues ? 'bad' : ''));
   const fixed = [[s.datesFixed, 'dates converted'], [s.numbersFixed, 'numbers converted'], [s.categoriesFixed, 'spellings merged'], [s.namesFixed, 'names recased'],
-    [s.trimmed, 'cells trimmed'], [s.placeholders, 'placeholders cleared'], [s.duplicateRows, 'duplicate rows removed'], [s.emptyRows, 'empty rows removed'], [s.emptyCols, 'empty columns removed']]
+    [s.trimmed, 'cells trimmed'], [s.placeholders, 'placeholders cleared'], [s.duplicateRows, 'duplicate rows removed'], [s.totalRows, 'total or footer rows left out'], [s.emptyRows, 'empty rows removed'], [s.emptyCols, 'empty columns removed']]
     .filter(([n]) => n).map(([n, t]) => `${n.toLocaleString()} ${n === 1 ? t.replace(/(\w)s( |$)/, '$1$2') : t}`);
   $('fixed').textContent = fixed.length ? 'Fixed automatically: ' + fixed.join(', ') + '.' : 'Nothing needed fixing automatically.';
+  $('warnings').replaceChildren(...state.result.warnings.map(t => el('li', { textContent: t })));
+  show($('warnings-wrap'), state.result.warnings.length > 0);
   show($('panel-results'));
   setTab('problems');
   $('panel-results').scrollIntoView({ behavior: 'smooth', block: 'start' });
