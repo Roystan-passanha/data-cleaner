@@ -9,62 +9,6 @@ const el = (tag, props = {}, ...kids) => {
 };
 const show = (node, on = true) => { node.hidden = !on; };
 
-// ---------- sign-in ----------
-const cfg = window.APP_CONFIG || {};
-const configured = Boolean(cfg.supabaseUrl && cfg.supabaseAnonKey && window.supabase);
-const auth = configured ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey).auth : null;
-
-function setSession(session) {
-  show($('view-login'), !session);
-  show($('view-app'), Boolean(session));
-  if (session) $('user-email').textContent = session.user.email;
-}
-
-async function initAuth() {
-  if (!configured) {
-    setSession(null);
-    show($('login-setup'));
-    for (const n of $('login-form').elements) n.disabled = true;
-    return;
-  }
-  auth.onAuthStateChange((event, session) => {
-    setSession(session);
-    if (event === 'PASSWORD_RECOVERY') $('dlg-password').showModal();
-  });
-  const { data } = await auth.getSession();
-  setSession(data.session);
-}
-
-$('login-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const err = $('login-error');
-  show(err, false);
-  $('login-submit').disabled = true;
-  const { error } = await auth.signInWithPassword({ email: $('login-email').value.trim(), password: $('login-password').value });
-  $('login-submit').disabled = false;
-  if (error) { err.textContent = error.message === 'Invalid login credentials' ? 'Wrong email or password.' : error.message; show(err); }
-  else $('login-password').value = '';
-});
-
-$('login-forgot').addEventListener('click', async () => {
-  const err = $('login-error');
-  const email = $('login-email').value.trim();
-  if (!email) { err.textContent = 'Type your email first, then click "Forgot password?".'; show(err); return; }
-  const { error } = await auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
-  err.textContent = error ? error.message : 'If that email has an account, a reset link is on its way.';
-  show(err);
-});
-
-$('btn-logout').addEventListener('click', () => auth.signOut());
-$('btn-password').addEventListener('click', () => { show($('password-msg'), false); $('new-password').value = ''; $('dlg-password').showModal(); });
-$('password-cancel').addEventListener('click', () => $('dlg-password').close());
-$('password-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const msg = $('password-msg');
-  const { error } = await auth.updateUser({ password: $('new-password').value });
-  if (error) { msg.textContent = error.message; show(msg); } else $('dlg-password').close();
-});
-
 // ---------- reading files ----------
 const state = { workbook: null, fileName: '', headers: [], rows: [], types: [], result: null, tab: 'problems' };
 
@@ -296,5 +240,3 @@ $('btn-xlsx').addEventListener('click', downloadXlsx);
 $('btn-csv').addEventListener('click', downloadCsv);
 $('filter').addEventListener('input', renderTable);
 for (const b of document.querySelectorAll('.tab')) b.addEventListener('click', () => setTab(b.dataset.tab));
-
-initAuth();

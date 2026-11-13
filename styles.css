@@ -34,18 +34,11 @@ input[type=email], input[type=password], input[type=number], input[type=search],
 }
 label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
 
-/* sign in */
-.login { min-height: 100svh; display: grid; place-items: center; padding: 24px 16px;
-  background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(59, 130, 246, .22), transparent 70%); }
-.login__card { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 32px; display: grid; gap: 14px; }
-.login__card h1 { font-size: 30px; margin-top: 8px; }
-.login__card form { display: grid; gap: 14px; }
-.login__card .link { justify-self: start; font-size: 14px; }
-
 /* app */
 .top { position: sticky; top: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 12px max(16px, calc((100vw - 1120px) / 2)); background: rgba(7, 9, 15, .8); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
-.top__user { display: flex; align-items: center; gap: 16px; font-size: 14px; flex-wrap: wrap; }
+.intro h1 { font-size: clamp(28px, 5vw, 40px); margin-bottom: 8px; }
+.intro p { max-width: 640px; margin: 0; }
 .wrap { width: min(1120px, 100% - 32px); margin: 28px auto; display: grid; gap: 20px; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; min-width: 0; }
 .step { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(59, 130, 246, .18); color: var(--accent-2); font-size: 14px; }
@@ -84,12 +77,6 @@ label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
 .tab.is-active { color: var(--text); border-bottom-color: var(--accent-2); }
 .filter { margin-bottom: 12px; max-width: 320px; }
 .foot { width: min(1120px, 100% - 32px); margin: 0 auto 40px; }
-
-dialog { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 16px; padding: 24px; width: min(400px, calc(100% - 32px)); }
-dialog::backdrop { background: rgba(0, 0, 0, .6); }
-dialog h3 { margin-top: 0; }
-dialog form { display: grid; gap: 14px; }
-dialog .actions { margin: 0; }
 
 @media (max-width: 720px) {
   .tiles { grid-template-columns: repeat(2, 1fr); }

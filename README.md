@@ -2,7 +2,7 @@
 
 ![tests](https://github.com/Roystan-passanha/data-cleaner/actions/workflows/tests.yml/badge.svg)
 
-A website that cleans messy Excel and CSV files. You sign in, drop a file, and download a cleaned workbook with a list of every problem found and the row it came from.
+A website that cleans messy Excel and CSV files. You drop a file and download a cleaned workbook with a list of every problem found and the row it came from.
 
 **Live site:** https://roystan-passanha.github.io/data-cleaner/
 
@@ -27,18 +27,10 @@ Plain HTML, CSS and JavaScript with no build step.
 | File | What it is |
 | --- | --- |
 | `js/cleaner.js` | All cleaning logic as pure functions |
-| `js/app.js` | Sign-in, file reading, screens and downloads |
+| `js/app.js` | File reading, screens and downloads |
 | `js/sample.js` | Generates a fake messy file to try the tool |
 | `tests/` | Tests for the cleaning logic (`npm test`, Node 20+) |
-| `vendor/` | SheetJS (reads and writes Excel) and the Supabase client (sign-in) |
-
-## Sign-in
-
-Accounts are handled by [Supabase Auth](https://supabase.com/auth). There is no public sign-up: the owner adds each person in the Supabase dashboard under Authentication > Users.
-
-To set it up, put the project URL and anon key in `config.js`, and turn off "Allow new users to sign up" in the Supabase project.
-
-Because cleaning runs in the browser and no data is stored on a server, the sign-in controls who can use the hosted site. It does not hide the source code, which is public in this repository.
+| `vendor/` | SheetJS, which reads and writes Excel files |
 
 ## Run it locally
 
@@ -49,4 +41,4 @@ npm test
 
 ## Licence
 
-MIT. SheetJS Community Edition is Apache-2.0 and supabase-js is MIT.
+MIT. SheetJS Community Edition is Apache-2.0.
