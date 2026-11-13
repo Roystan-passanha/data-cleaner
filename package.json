@@ -1,0 +1,13 @@
+{
+  "name": "data-cleaner",
+  "version": "1.0.0",
+  "description": "Clean messy Excel and CSV files in the browser",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "type": "module",
+  "private": true
+}
