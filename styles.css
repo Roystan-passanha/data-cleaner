@@ -1,6 +1,6 @@
 :root {
-  --bg: #07090f; --surface: #0d111a; --surface-2: #121826; --line: rgba(255, 255, 255, 0.09);
-  --text: #e8ecf4; --muted: #8b95a8; --accent: #3b82f6; --accent-2: #67e8f9;
+  --bg: #05070d; --surface: #0b0f1a; --surface-2: #111727; --line: rgba(255, 255, 255, 0.09);
+  --text: #e8ecf4; --muted: #8b95a8; --accent: #2f7df6; --accent-2: #7fb2ff;
   --good: #34d399; --warn: #fbbf24; --bad: #f87171; --radius: 14px;
   color-scheme: dark;
 }
@@ -18,14 +18,14 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .notice ul { margin: 6px 0 0; padding-left: 18px; }
 .notice { border: 1px solid rgba(251, 191, 36, .35); background: rgba(251, 191, 36, .08); color: #fde68a; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
 
-.brand { display: flex; align-items: center; gap: 10px; font-family: 'Space Grotesk'; font-weight: 600; font-size: 17px; }
-.brand__mark { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.brand { display: flex; align-items: center; gap: 10px; font-family: 'Pixelify Sans', ui-monospace, monospace; font-weight: 500; font-size: 19px; }
+.brand__mark { width: 20px; height: 20px; border-radius: 6px; background: var(--accent); }
 
 .btn { font: inherit; font-weight: 500; color: var(--text); background: rgba(255, 255, 255, .04); border: 1px solid var(--line); padding: 10px 18px; border-radius: 999px; cursor: pointer; transition: border-color .15s, background .15s; }
 .btn:hover { border-color: rgba(255, 255, 255, .25); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn--primary { background: var(--text); color: var(--bg); border-color: var(--text); }
-.btn--primary:hover { background: #fff; }
+.btn--primary { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 8px 24px rgba(47, 125, 246, 0.3); }
+.btn--primary:hover { background: #4b90ff; border-color: #4b90ff; }
 .btn--small { padding: 6px 14px; font-size: 14px; }
 .link { font: inherit; color: var(--accent-2); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 :focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
@@ -47,7 +47,7 @@ label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
 .drop { border: 1.5px dashed rgba(255, 255, 255, .2); border-radius: var(--radius); padding: 36px 16px; text-align: center; cursor: pointer; margin-bottom: 12px; transition: border-color .15s, background .15s; }
 .drop:hover, .drop.is-over { border-color: var(--accent-2); background: rgba(103, 232, 249, .05); }
 .drop p { margin: 0 0 4px; }
-.fileinfo { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.fileinfo { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
 .fileinfo > span { font-weight: 500; margin-right: auto; align-self: center; }
 .fileinfo label { grid-auto-flow: column; align-items: center; }
 .fileinfo input { width: 80px; }

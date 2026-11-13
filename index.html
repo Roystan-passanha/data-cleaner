@@ -7,72 +7,116 @@
   <meta name="description" content="Clean messy Excel and CSV files in your browser. Files never leave your computer.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%2307090f'/><path d='M16 22h32M16 32h32M16 42h20' stroke='%2367e8f9' stroke-width='5' stroke-linecap='round'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=Pixelify+Sans:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="landing.css">
 </head>
 <body>
-  <!-- App -->
-  <div id="view-app">
-    <header class="top">
-      <div class="brand"><span class="brand__mark"></span>Data Cleaner</div>
-      <span class="muted small">Your files stay on this computer. Nothing is uploaded.</span>
-    </header>
-
-    <main class="wrap">
-      <section class="intro">
-        <h1>Clean a messy Excel or CSV file</h1>
-        <p class="muted">Fixes dates, numbers, spellings, spaces and duplicates, and lists every problem with its row number. The file is cleaned in your browser and is never uploaded.</p>
-      </section>
-      <section class="panel">
-        <h2><span class="step">1</span>Choose a file</h2>
-        <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a file">
-          <p><strong>Drop an Excel or CSV file here</strong>, or click to browse</p>
-          <p class="muted small">.xlsx, .xls or .csv. The file stays on this computer.</p>
+  <div id="landing">
+    <div class="lp">
+      <canvas id="hero-canvas" class="lp__canvas" aria-hidden="true"></canvas>
+      <header class="lp__nav">
+        <a class="lp__brand" href="./"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" stroke="#4b90ff" stroke-width="2.4" stroke-linecap="round"/><circle cx="19" cy="18" r="2" fill="#9cc4ff"/></svg>Data Cleaner</a>
+        <nav class="lp__menu" aria-label="Sections">
+          <a href="#how">How it works</a>
+          <a href="#privacy">Privacy</a>
+          <a href="https://github.com/Roystan-passanha/data-cleaner">GitHub</a>
+        </nav>
+        <a class="lp-btn lp-btn--blue lp-btn--small" href="https://roystan-passanha.github.io/instant-dashboard/">Open Instant Dashboard</a>
+      </header>
+      <div class="lp__mid">
+        <div id="drop" class="lp__drop" tabindex="0" role="button" aria-label="Choose a file">
+          <svg viewBox="0 0 38 38" fill="none" aria-hidden="true"><rect x="7" y="3" width="24" height="32" rx="5" stroke="#9cc4ff" stroke-width="1.6"/><path d="M19 25V13m0 0-5 5m5-5 5 5" stroke="#4b90ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <strong>Drop a file here</strong>
+          <span>.xlsx, .xls or .csv</span>
           <input id="file" type="file" accept=".xlsx,.xls,.xlsm,.csv,.tsv,.txt" hidden>
         </div>
-        <p class="muted small">No file to hand? <button class="link" id="btn-sample">Load a sample messy file</button></p>
-        <p id="file-error" class="error" role="alert" hidden></p>
-        <div id="file-info" class="fileinfo" hidden>
-          <span id="file-name"></span>
-          <label>Sheet <select id="sheet"></select></label>
-          <label>Header row <input id="header-row" type="number" min="1" value="1"></label>
+      </div>
+      <div class="lp__hero">
+        <div>
+          <div class="lp__tag">Nothing is uploaded</div>
+          <h1 class="lp__title">Messy file in.<br>Clean file out.</h1>
         </div>
-      </section>
-
-      <section class="panel" id="panel-options" hidden>
-        <h2><span class="step">2</span>Check the columns</h2>
-        <p class="muted">This is what each column looks like. Change a type if the guess is wrong.</p>
-        <div class="tablewrap"><table id="columns" class="table"></table></div>
-
-        <h3>What to fix</h3>
-        <div class="options" id="options"></div>
-        <button class="btn btn--primary" id="btn-clean">Clean data</button>
-      </section>
-
-      <section class="panel" id="panel-results" hidden>
-        <h2><span class="step">3</span>Results</h2>
-        <div class="tiles" id="tiles"></div>
-        <p id="fixed" class="muted"></p>
-        <div id="warnings-wrap" class="notice" hidden>
-          <strong>Things to know about this file</strong>
-          <ul id="warnings"></ul>
+        <div class="lp__side">
+          <p>Fixes dates, numbers, spellings and duplicates in any Excel or CSV file, and lists every problem with the row it came from.</p>
+          <div class="lp__actions">
+            <button class="lp-btn lp-btn--blue" id="btn-choose">Choose a file</button>
+            <button class="lp-btn lp-btn--white" id="btn-sample">Try a messy sample</button>
+          </div>
+          <p id="file-error" class="lp__status error" role="alert" hidden></p>
+          <p id="busy" class="lp__status" role="status" hidden>Reading the file. Large files can take a few seconds.</p>
         </div>
-        <div class="actions">
-          <button class="btn btn--primary" id="btn-xlsx">Download cleaned Excel file</button>
-          <button class="btn" id="btn-csv">Download cleaned CSV</button>
+      </div>
+    </div>
+    <section class="lp-more">
+      <div class="lp-more__inner">
+        <h2 id="how">How it works</h2>
+        <ol class="lp-steps">
+          <li><b>01</b><h3>Drop a file</h3><p>Excel or CSV. The site works out what each column holds: dates, numbers, emails, IDs or categories.</p></li>
+          <li><b>02</b><h3>Check the guesses</h3><p>Change a column type if it is wrong, and tick what you want fixed.</p></li>
+          <li><b>03</b><h3>Download the clean file</h3><p>A workbook with the cleaned data, a list of every issue with its row number, and a summary.</p></li>
+        </ol>
+        <div class="lp-privacy" id="privacy">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="3" stroke="#9cc4ff" stroke-width="1.8"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="#4b90ff" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <div>
+            <h3>Your file stays on your computer</h3>
+            <p>The file is read by your own browser. It is not sent to a server, and nothing is kept after you close the tab.</p>
+          </div>
         </div>
-        <div class="tabs" role="tablist">
-          <button class="tab is-active" data-tab="problems" role="tab">Problems found</button>
-          <button class="tab" data-tab="issues" role="tab">Every issue</button>
-          <button class="tab" data-tab="data" role="tab">Cleaned data</button>
-        </div>
-        <div class="filter" id="filter-wrap" hidden><input id="filter" type="search" placeholder="Filter rows"></div>
-        <div class="tablewrap"><table id="result-table" class="table"></table></div>
-        <p id="result-note" class="muted small"></p>
-      </section>
-    </main>
-    <footer class="foot muted small">Built by Roystan Passanha. Files are cleaned in your browser and are not sent to any server.</footer>
+        <div class="lp-foot"><span>Built by Roystan Passanha</span><span><a href="https://roystan-passanha.github.io/instant-dashboard/">Instant Dashboard</a> · <a href="https://github.com/Roystan-passanha/data-cleaner">Source code</a></span></div>
+      </div>
+    </section>
   </div>
+  <header class="top">
+    <div class="brand"><span class="brand__mark"></span>Data Cleaner</div>
+    <span class="muted small">Your files stay on this computer. Nothing is uploaded.</span>
+  </header>
+
+  <main class="wrap" id="work">
+    <section class="panel">
+      <div id="file-info" class="fileinfo">
+        <span id="file-name"></span>
+        <label>Sheet <select id="sheet"></select></label>
+        <label>Header row <input id="header-row" type="number" min="1" value="1"></label>
+        <button class="btn btn--small" id="btn-new">Use another file</button>
+      </div>
+      <p id="work-error" class="error" role="alert" hidden></p>
+    </section>
+
+    <section class="panel" id="panel-options" hidden>
+      <h2><span class="step">1</span>Check the columns</h2>
+      <p class="muted">This is what each column looks like. Change a type if the guess is wrong.</p>
+      <div class="tablewrap"><table id="columns" class="table"></table></div>
+
+      <h3>What to fix</h3>
+      <div class="options" id="options"></div>
+      <button class="btn btn--primary" id="btn-clean">Clean data</button>
+    </section>
+
+    <section class="panel" id="panel-results" hidden>
+      <h2><span class="step">2</span>Results</h2>
+      <div class="tiles" id="tiles"></div>
+      <p id="fixed" class="muted"></p>
+      <div id="warnings-wrap" class="notice" hidden>
+        <strong>Things to know about this file</strong>
+        <ul id="warnings"></ul>
+      </div>
+      <div class="actions">
+        <button class="btn btn--primary" id="btn-xlsx">Download cleaned Excel file</button>
+        <button class="btn" id="btn-csv">Download cleaned CSV</button>
+      </div>
+      <div class="tabs" role="tablist">
+        <button class="tab is-active" data-tab="problems" role="tab">Problems found</button>
+        <button class="tab" data-tab="issues" role="tab">Every issue</button>
+        <button class="tab" data-tab="data" role="tab">Cleaned data</button>
+      </div>
+      <div class="filter" id="filter-wrap" hidden><input id="filter" type="search" placeholder="Filter rows"></div>
+      <div class="tablewrap"><table id="result-table" class="table"></table></div>
+      <p id="result-note" class="muted small"></p>
+    </section>
+  </main>
+  <footer class="foot muted small">Built by Roystan Passanha. Files are cleaned in your browser and are not sent to any server.</footer>
 
   <script src="vendor/xlsx.full.min.js"></script>
   <script type="module" src="js/app.js"></script>

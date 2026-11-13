@@ -1,5 +1,6 @@
 import { clean, profileColumns, isDateCell, detectHeaderRow, DEFAULT_OPTIONS } from './cleaner.js';
 import { makeSample } from './sample.js';
+import { startHero } from './hero.js';
 
 const $ = id => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => {
@@ -49,8 +50,12 @@ function sheetToMatrix(ws, csv) {
   return out;
 }
 
+const onLanding = () => !$('landing').hidden;
+function showWork() { show($('landing'), false); window.scrollTo(0, 0); }
+function fail(message) { const t = onLanding() ? $('file-error') : $('work-error'); t.textContent = message; show(t); }
+
 async function openFile(file) {
-  show($('file-error'), false);
+  show($('file-error'), false); show($('work-error'), false);
   try {
     if (file.size > 30 * 1024 * 1024) throw new Error('That file is over 30 MB, which is too large to clean in a browser.');
     const csv = /\.(csv|tsv|txt)$/i.test(file.name);
@@ -65,8 +70,7 @@ async function openFile(file) {
     state.matrices = {};
     fillSheets();
   } catch (e) {
-    $('file-error').textContent = e.message && /MB/.test(e.message) ? e.message : 'That file could not be read. Check it is an Excel or CSV file and is not password protected.';
-    show($('file-error'));
+    fail(e.message && /MB/.test(e.message) ? e.message : 'That file could not be read. Check it is an Excel or CSV file and is not password protected.');
   }
 }
 
@@ -77,9 +81,9 @@ function fillSheets() {
   const size = n => Object.keys(state.workbook.Sheets[n]).length;
   sel.value = state.workbook.SheetNames.reduce((a, b) => (size(b) > size(a) ? b : a));
   $('file-name').textContent = state.fileName;
-  show($('file-info'));
   $('header-row').value = '';
   loadSheet();
+  showWork();
 }
 
 function loadSheet() {
@@ -106,10 +110,10 @@ function useTable(headers, rows, name) {
   $('file-name').textContent = name;
   $('sheet').replaceChildren(el('option', { textContent: 'Sample' }));
   $('header-row').value = 1;
-  show($('file-info'));
   renderColumns();
   show($('panel-options'));
   show($('panel-results'), false);
+  showWork();
 }
 
 // ---------- step 2 ----------
@@ -244,8 +248,13 @@ drop.addEventListener('click', () => $('file').click());
 drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });
 $('file').addEventListener('change', e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ''; });
 for (const t of ['dragenter', 'dragover']) drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('is-over'); });
-for (const t of ['dragleave', 'drop']) drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('is-over'); });
-drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) openFile(f); });
+for (const t of ['dragleave', 'drop']) drop.addEventListener(t, () => drop.classList.remove('is-over'));
+// a file dropped anywhere on the page is opened here instead of replacing the page
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) openFile(f); });
+$('btn-choose').addEventListener('click', () => $('file').click());
+$('btn-new').addEventListener('click', () => $('file').click());
+startHero($('hero-canvas'), 'grid');
 $('btn-sample').addEventListener('click', () => { const s = makeSample(300); useTable(s.headers, s.rows, 'sample_employees.xlsx'); });
 $('sheet').addEventListener('change', () => { if (state.workbook) { $('header-row').value = ''; loadSheet(); } });
 $('header-row').addEventListener('change', () => { if (state.workbook) loadSheet(); });
